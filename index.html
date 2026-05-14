@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Segnalazione Anomalia</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Arial, sans-serif;
+    background: #f0f0f0;
+    padding: 20px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 18px;
+    margin-bottom: 20px;
+    color: #111;
+    border-bottom: 2px solid #c00;
+    padding-bottom: 8px;
+  }
+
+  .block { margin-bottom: 16px; }
+
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #555;
+    margin-bottom: 5px;
+  }
+
+  input[type="text"], textarea {
+    width: 100%;
+    padding: 10px;
+    font-size: 15px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    font-family: Arial, sans-serif;
+  }
+
+  textarea { min-height: 90px; resize: vertical; }
+
+  /* Upload */
+  .upload-zone {
+    border: 2px dashed #aaa;
+    border-radius: 4px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    background: #fff;
+    position: relative;
+  }
+  .upload-zone:active { background: #f5f5f5; }
+  .upload-zone input {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer;
+    width: 100%; height: 100%;
+  }
+  .upload-zone p { font-size: 14px; color: #666; }
+
+  .foto-preview { position: relative; display: none; }
+  .foto-preview img {
+    width: 100%; border-radius: 4px;
+    border: 1px solid #ccc; display: block;
+    max-height: 320px; object-fit: contain;
+    background: #f9f9f9;
+  }
+  .btn-remove {
+    position: absolute; top: 6px; right: 6px;
+    background: #c00; color: #fff;
+    border: none; border-radius: 3px;
+    width: 28px; height: 28px;
+    font-size: 16px; cursor: pointer;
+  }
+
+  /* Bottoni */
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+  .btn {
+    flex: 1; min-width: 120px;
+    padding: 13px 10px;
+    font-size: 14px; font-weight: bold;
+    border: none; border-radius: 4px;
+    cursor: pointer; text-align: center;
+  }
+  .btn-pdf  { background: #c00; color: #fff; }
+  .btn-jpg  { background: #222; color: #fff; }
+  .btn-share{ background: #fff; color: #222; border: 2px solid #222; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(10px);
+    background: #222; color: #fff;
+    padding: 10px 20px; border-radius: 4px;
+    font-size: 13px; opacity: 0;
+    transition: all 0.3s; pointer-events: none; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Loading */
+  .loading {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: none; align-items: center; justify-content: center; z-index: 99;
+  }
+  .loading.show { display: flex; }
+  .loading-box {
+    background: #fff; padding: 24px 32px; border-radius: 4px;
+    text-align: center; font-size: 14px; font-weight: bold;
+  }
+  .spinner {
+    width: 26px; height: 26px;
+    border: 3px solid #ddd; border-top-color: #c00;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    margin: 0 auto 10px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Documento A4 nascosto usato solo per l'export */
+  #doc {
+    position: fixed; left: -9999px; top: 0;
+    width: 794px;
+    background: #fff;
+    padding: 44px 52px 44px;
+    font-family: Arial, sans-serif;
+    color: #111;
+  }
+  #doc .doc-header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    border-bottom: 3px solid #c00;
+    padding-bottom: 10px; margin-bottom: 18px;
+  }
+  #doc .doc-title {
+    font-size: 20px; font-weight: bold;
+  }
+  #doc .doc-codice {
+    font-size: 13px; color: #666;
+  }
+  #doc .doc-foto {
+    margin-bottom: 18px;
+  }
+  #doc .doc-foto img {
+    width: 100%;
+    display: block;
+    border: 1px solid #ddd;
+    /* altezza calcolata via JS in base alle proporzioni reali */
+  }
+  #doc .doc-note-label {
+    font-size: 11px; font-weight: bold; text-transform: uppercase;
+    color: #888; margin-bottom: 6px;
+  }
+  #doc .doc-note {
+    font-size: 14px; line-height: 1.65; white-space: pre-wrap;
+    padding: 14px 16px; background: #f7f7f7;
+    border-left: 3px solid #c00;
+  }
+  #doc .doc-footer {
+    margin-top: 20px;
+    font-size: 10px; color: #aaa;
+    border-top: 1px solid #eee; padding-top: 8px;
+    display: flex; justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<h1>Segnalazione Anomalia</h1>
+
+<div class="block">
+  <label>Titolo</label>
+  <input type="text" id="titolo" placeholder="es. Giunto saldatura fuori tolleranza">
+</div>
+
+<div class="block">
+  <label>Foto</label>
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept="image/*" capture="environment">
+    <p>📷 Tocca per scattare o scegliere dalla galleria</p>
+  </div>
+  <div class="foto-preview" id="fotoPreview">
+    <img id="fotoImg" src="" alt="Foto">
+    <button class="btn-remove" id="btnRemove">✕</button>
+  </div>
+</div>
+
+<div class="block">
+  <label>Telaio (opzionale)</label>
+  <input type="text" id="telaio" placeholder="es. AB12345">
+</div>
+
+<div class="block">
+  <label>Note (opzionale)</label>
+  <textarea id="note" placeholder="Descrivi l'anomalia…"></textarea>
+</div>
+
+<div class="btn-row">
+  <button class="btn btn-pdf"  id="btnPDF">⬇ PDF</button>
+  <button class="btn btn-jpg"  id="btnJPG">⬇ JPG</button>
+  <button class="btn btn-share" id="btnShare">↑ Condividi</button>
+</div>
+
+<!-- Documento nascosto per export -->
+<div id="doc">
+  <div class="doc-header">
+    <div class="doc-title" id="docTitolo">SEGNALAZIONE ANOMALIA</div>
+    <div class="doc-codice" id="docCodice"></div>
+  </div>
+  <div class="doc-foto" id="docFoto"></div>
+  <div id="docNoteWrap" style="display:none">
+    <div class="doc-note-label">Note</div>
+    <div class="doc-note" id="docNote"></div>
+  </div>
+  <div class="doc-footer">
+    <span id="docDataFooter"></span>
+  </div>
+</div>
+
+<!-- Loading / Toast -->
+<div class="loading" id="loading"><div class="loading-box"><div class="spinner"></div><div id="loadingMsg">Generazione…</div></div></div>
+<div class="toast" id="toast"></div>
+
+<!-- html2canvas e jsPDF inline (CDN non usato — librerie embedded via script src locale non disponibile)
+     Usiamo CDN solo perché offline-portable richiede di avere i file. 
+     Soluzione: inlined via fetch al primo avvio e cached, oppure CDN accettabile.
+     Per la massima portabilità offline le librerire vengono caricate da CDN la prima volta
+     e poi il browser le cachea. -->
+<script>
+// ── Carica librerie dinamicamente ──────────────────────────────────────────
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+// Versioni semplificate self-hosted non disponibili: usiamo CDN standard
+// (il browser le cachea dopo il primo caricamento online)
+const LIB_H2C  = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+const LIB_JSPDF = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+
+let libsReady = false;
+async function ensureLibs() {
+  if (libsReady) return;
+  if (!window.html2canvas) await loadScript(LIB_H2C);
+  if (!window.jspdf)       await loadScript(LIB_JSPDF);
+  libsReady = true;
+}
+
+// ── Stato ──────────────────────────────────────────────────────────────────
+let fotoDataUrl = null;
+let fotoW = 0, fotoH = 0; // dimensioni reali foto
+
+// ── Foto ───────────────────────────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) leggiFile(file);
+});
+
+function leggiFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    fotoDataUrl = e.target.result;
+    // Leggi dimensioni reali
+    const tmp = new Image();
+    tmp.onload = () => { fotoW = tmp.naturalWidth; fotoH = tmp.naturalHeight; };
+    tmp.src = fotoDataUrl;
+    document.getElementById('fotoImg').src = fotoDataUrl;
+    document.getElementById('fotoPreview').style.display = 'block';
+    document.getElementById('uploadZone').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+document.getElementById('btnRemove').addEventListener('click', () => {
+  fotoDataUrl = null; fotoW = 0; fotoH = 0;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fotoPreview').style.display = 'none';
+  document.getElementById('uploadZone').style.display = 'block';
+});
+
+// ── Orientamento: true = landscape ─────────────────────────────────────────
+function isLandscape() { return fotoW > 0 && fotoW > fotoH; }
+
+// ── Prepara documento per export ───────────────────────────────────────────
+// Misure px a 96dpi: A4 portrait 794×1123, landscape 1123×794
+function preparaDoc() {
+  const titolo = document.getElementById('titolo').value.trim() || 'SEGNALAZIONE ANOMALIA';
+  const telaio = document.getElementById('telaio').value.trim();
+  const note   = document.getElementById('note').value.trim();
+  const land   = isLandscape();
+
+  const docEl  = document.getElementById('doc');
+  const PAD    = 44;  // padding laterale e verticale
+  const PAD_LR = 52;
+
+  // Dimensioni foglio
+  const foglioW = land ? 1123 : 794;
+  const foglioH = land ? 794  : 1123;
+  docEl.style.width  = foglioW + 'px';
+  docEl.style.height = foglioH + 'px'; // fisso per forzare il canvas giusto
+
+  // Header altezza stimata ~58px, footer ~30px, gap note
+  const noteH = note ? Math.max(80, note.split('\n').length * 23 + 56) : 0;
+  const noteGap = note ? 18 : 0;
+  const contentW = foglioW - PAD_LR * 2;
+  const spazioFoto = foglioH - PAD * 2 - 58 - noteH - noteGap - 20 - 18;
+
+  // Titolo
+  document.getElementById('docTitolo').textContent = titolo.toUpperCase();
+  document.getElementById('docCodice').textContent = telaio ? `Telaio: ${telaio}` : '';
+
+  // Foto
+  const fotoWrap = document.getElementById('docFoto');
+  fotoWrap.innerHTML = '';
+  if (fotoDataUrl) {
+    const img = document.createElement('img');
+    img.src = fotoDataUrl;
+    const ratio = (fotoH || 1) / (fotoW || 1);
+    const altezzaSeFullWidth = Math.round(contentW * ratio);
+    // Se la foto è più alta dello spazio, la scaliamo giù mantenendo proporzioni
+    // Se è più corta, la lasciamo alla sua altezza naturale (niente allungamento)
+    const altezzaFinale = Math.min(altezzaSeFullWidth, Math.max(spazioFoto, 100));
+    const larghezzaFinale = Math.round(altezzaFinale / ratio);
+    img.style.width     = larghezzaFinale + 'px';
+    img.style.height    = altezzaFinale + 'px';
+    img.style.objectFit = 'contain';
+    img.style.display   = 'block';
+    img.style.margin    = '0 auto';
+    img.style.border    = '1px solid #ddd';
+    fotoWrap.appendChild(img);
+  }
+
+  // Note
+  const noteWrap = document.getElementById('docNoteWrap');
+  if (note) {
+    document.getElementById('docNote').textContent = note;
+    noteWrap.style.display = 'block';
+  } else {
+    noteWrap.style.display = 'none';
+  }
+
+  document.getElementById('docDataFooter').textContent =
+    new Date().toLocaleDateString('it-IT', { day:'2-digit', month:'long', year:'numeric' });
+}
+
+function nomeFile() {
+  const t = document.getElementById('telaio').value.trim().replace(/\s+/g,'_') || 'anomalia';
+  const d = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  return `segnalazione_${t}_${d}`;
+}
+
+async function renderCanvas() {
+  preparaDoc();
+  const land   = isLandscape();
+  const foglioW = land ? 1123 : 794;
+  const foglioH = land ? 794  : 1123;
+  await new Promise(r => setTimeout(r, 150));
+  const canvas = await html2canvas(document.getElementById('doc'), {
+    scale: 2, useCORS: true, allowTaint: true,
+    backgroundColor: '#ffffff',
+    width: foglioW, height: foglioH
+  });
+  return { canvas, land, foglioW, foglioH };
+}
+
+// ── PDF ────────────────────────────────────────────────────────────────────
+document.getElementById('btnPDF').addEventListener('click', async () => {
+  mostraLoading('Generazione PDF…');
+  try {
+    await ensureLibs();
+    const { canvas, land } = await renderCanvas();
+    const { jsPDF } = window.jspdf;
+    const orientation = land ? 'landscape' : 'portrait';
+    const pdf = new jsPDF({ orientation, unit:'mm', format:'a4' });
+    const pw = land ? 297 : 210;
+    const ph = land ? 210 : 297;
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pw, ph);
+    pdf.save(nomeFile() + '.pdf');
+    toast('PDF salvato!');
+  } catch(e) { toast('Errore: ' + e.message); }
+  finally { nascondiLoading(); }
+});
+
+// ── JPG ────────────────────────────────────────────────────────────────────
+document.getElementById('btnJPG').addEventListener('click', async () => {
+  mostraLoading('Generazione JPG…');
+  try {
+    await ensureLibs();
+    const { canvas } = await renderCanvas();
+    const a = document.createElement('a');
+    a.download = nomeFile() + '.jpg';
+    a.href = canvas.toDataURL('image/jpeg', 0.92);
+    a.click();
+    toast('JPG salvato!');
+  } catch(e) { toast('Errore: ' + e.message); }
+  finally { nascondiLoading(); }
+});
+
+// ── Condividi ──────────────────────────────────────────────────────────────
+document.getElementById('btnShare').addEventListener('click', async () => {
+  mostraLoading('Preparazione…');
+  try {
+    await ensureLibs();
+    const { canvas } = await renderCanvas();
+    canvas.toBlob(async (blob) => {
+      nascondiLoading();
+      const file = new File([blob], nomeFile() + '.jpg', { type: 'image/jpeg' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Segnalazione Anomalia' });
+      } else {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = file.name; a.click();
+        toast('Salvato — condividi manualmente');
+      }
+    }, 'image/jpeg', 0.92);
+  } catch(e) {
+    nascondiLoading();
+    if (e.name !== 'AbortError') toast('Errore condivisione');
+  }
+});
+
+// ── Utility ────────────────────────────────────────────────────────────────
+function mostraLoading(msg) {
+  document.getElementById('loadingMsg').textContent = msg;
+  document.getElementById('loading').classList.add('show');
+}
+function nascondiLoading() {
+  document.getElementById('loading').classList.remove('show');
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
