@@ -93,6 +93,32 @@
   .btn-share{ background: #fff; color: #222; border: 2px solid #222; }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  /* Modal scelta formato condivisione */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: none; align-items: flex-end; justify-content: center;
+    z-index: 98;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-box {
+    background: #fff; width: 100%; max-width: 480px;
+    border-radius: 12px 12px 0 0;
+    padding: 24px 20px 36px;
+  }
+  .modal-box h3 {
+    font-size: 14px; font-weight: bold; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #555; margin-bottom: 16px; text-align: center;
+  }
+  .modal-btns { display: flex; gap: 10px; }
+  .modal-btns .btn { font-size: 15px; padding: 15px 10px; }
+  .modal-cancel {
+    display: block; width: 100%; margin-top: 10px;
+    padding: 13px; background: none; border: none;
+    font-size: 14px; color: #888; cursor: pointer;
+    font-family: Arial, sans-serif;
+  }
+
   /* Toast */
   .toast {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(10px);
@@ -218,6 +244,18 @@
   </div>
   <div class="doc-footer">
     <span id="docDataFooter"></span>
+  </div>
+</div>
+
+<!-- Modal scelta formato -->
+<div class="modal-overlay" id="modalFormato">
+  <div class="modal-box">
+    <h3>Condividi come</h3>
+    <div class="modal-btns">
+      <button class="btn btn-pdf" id="modalBtnPDF">📄 PDF</button>
+      <button class="btn btn-jpg" id="modalBtnJPG">🖼 JPG</button>
+    </div>
+    <button class="modal-cancel" id="modalCancel">Annulla</button>
   </div>
 </div>
 
@@ -404,27 +442,80 @@ document.getElementById('btnJPG').addEventListener('click', async () => {
 });
 
 // ── Condividi ──────────────────────────────────────────────────────────────
-document.getElementById('btnShare').addEventListener('click', async () => {
-  mostraLoading('Preparazione…');
+document.getElementById('btnShare').addEventListener('click', () => {
+  document.getElementById('modalFormato').classList.add('show');
+});
+document.getElementById('modalCancel').addEventListener('click', () => {
+  document.getElementById('modalFormato').classList.remove('show');
+});
+document.getElementById('modalFormato').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+});
+
+document.getElementById('modalBtnJPG').addEventListener('click', async () => {
+  document.getElementById('modalFormato').classList.remove('show');
+  mostraLoading('Preparazione JPG…');
   try {
     await ensureLibs();
     const { canvas } = await renderCanvas();
-    canvas.toBlob(async (blob) => {
-      nascondiLoading();
-      const file = new File([blob], nomeFile() + '.jpg', { type: 'image/jpeg' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Segnalazione Anomalia' });
-      } else {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = file.name; a.click();
-        toast('Salvato — condividi manualmente');
-      }
-    }, 'image/jpeg', 0.92);
+    await new Promise((resolve, reject) => {
+      canvas.toBlob(async (blob) => {
+        try {
+          const file = new File([blob], nomeFile() + '.jpg', { type: 'image/jpeg' });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: document.getElementById('titolo').value.trim() || 'Segnalazione Anomalia' });
+          } else {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = file.name; a.click();
+            toast('JPG salvato — condividi manualmente');
+          }
+          resolve();
+        } catch(e) { reject(e); }
+      }, 'image/jpeg', 0.92);
+    });
   } catch(e) {
-    nascondiLoading();
-    if (e.name !== 'AbortError') toast('Errore condivisione');
-  }
+    if (e.name !== 'AbortError') toast('Errore: ' + e.message);
+  } finally { nascondiLoading(); }
+});
+
+document.getElementById('modalBtnPDF').addEventListener('click', async () => {
+  document.getElementById('modalFormato').classList.remove('show');
+  mostraLoading('Preparazione PDF…');
+  try {
+    await ensureLibs();
+    const { canvas, land } = await renderCanvas();
+    const { jsPDF } = window.jspdf;
+    const orientation = land ? 'landscape' : 'portrait';
+    const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+    const pw = land ? 297 : 210, ph = land ? 210 : 297;
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pw, ph);
+
+    // Su iOS navigator.share non accetta PDF in modo affidabile → salva e basta
+    const pdfBlob = pdf.output('blob');
+    const file = new File([pdfBlob], nomeFile() + '.pdf', { type: 'application/pdf' });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: document.getElementById('titolo').value.trim() || 'Segnalazione Anomalia' });
+    } else {
+      // Fallback: scarica il PDF
+      pdf.save(nomeFile() + '.pdf');
+      toast('PDF salvato!');
+    }
+  } catch(e) {
+    if (e.name !== 'AbortError') {
+      // Fallback estremo: se share PDF fallisce, scarica
+      try {
+        const { canvas, land } = await renderCanvas();
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: land ? 'landscape' : 'portrait', unit:'mm', format:'a4' });
+        const pw = land ? 297 : 210, ph = land ? 210 : 297;
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pw, ph);
+        pdf.save(nomeFile() + '.pdf');
+        toast('PDF salvato!');
+      } catch(e2) { toast('Errore: ' + e2.message); }
+    }
+  } finally { nascondiLoading(); }
 });
 
 // ── Utility ────────────────────────────────────────────────────────────────
